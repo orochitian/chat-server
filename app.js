@@ -3,8 +3,12 @@ var app = express();
 var mongo = require('mongoose');
 var bodyParser = require('body-parser');
 var userModel = require('./model/userModel');
+var friendModel = require('./model/friendModel');
 var session = require('express-session');
 var history = require('connect-history-api-fallback');
+let http = require('http').createServer(app);
+require('./io')(require('socket.io')(http));
+
 
 app.use('*', (req, res, next) => {
     res.header("Access-Control-Allow-Origin", req.headers.origin);
@@ -64,6 +68,7 @@ app.get('/logout', (req, res) => {
 app.post('/regist', (req, res) => {
     userModel.find({username: req.body.username}).then(user => {
         if( user.length < 1 ) {
+            friendModel.create({username: req.body.username, list: []}, err => {});
             userModel.create(req.body, err => {
                 res.json({
                     code: 200,
@@ -112,7 +117,7 @@ mongo.connect('mongodb://localhost:27017/vue', { useNewUrlParser: true, useFindA
     if( err ) {
         console.log('数据库启动失败：', err);
     } else {
-        app.listen('80', err => {
+        http.listen('80', err => {
             err ? console.log('服务器启动失败：', err) : console.log('服务器端口：80');
         })
     }
