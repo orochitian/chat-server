@@ -4,17 +4,30 @@ var mongo = require('mongoose');
 var bodyParser = require('body-parser');
 var userModel = require('./model/userModel');
 var friendModel = require('./model/friendModel');
-var session = require('express-session');
 var history = require('connect-history-api-fallback');
+let jwt = require('jsonwebtoken');
 let http = require('http').createServer(app);
 require('./io')(require('socket.io')(http));
 
+const secret = 'ryanlee';
 
 app.use('*', (req, res, next) => {
     res.header("Access-Control-Allow-Origin", req.headers.origin);
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, token");
     res.header("Access-Control-Allow-Methods","PUT,POST,GET,DELETE,OPTIONS");
     res.header("Access-Control-Allow-Credentials", true);
+    if( req.method === 'OPTIONS' ) {
+        return res.send(true);
+    }
+    res.loginInvalid = () => {
+        res.send({code: 401, msg: '登录状态已失效'});
+    }
+    res.success = (data = {}) => {
+        res.send({code: 200, data});
+    }
+    res.fail = msg => {
+        res.send({code: 201, msg});
+    }
     next();
 });
 
@@ -28,11 +41,11 @@ app.use( bodyParser.json({limit: '1mb'}) );
 
 
 
-app.use(session({
-    secret : 'ryan lee',
-    resave : true,
-    saveUninitialized : true
-}));
+// app.use(session({
+//     secret : 'ryan lee',
+//     resave : true,
+//     saveUninitialized : true
+// }));
 
 app.get('/', (req, res) => {
     res.set('Content-Type', 'text/html; charset=utf-8');
@@ -41,18 +54,17 @@ app.get('/', (req, res) => {
 
 //  登录
 app.post('/login', (req, res) => {
-    //  登录成功后，更新用户的sessionid。作用是在以后的请求中对比当前用户的sessionid和请求中的sessionid是否一致，如果不一致代表登录已经失效。
-    //  通过session.userId记录当前用户是谁。
-    userModel.findOneAndUpdate({
-        username: req.body.username,
-        password: req.body.password
-    }, {sessionId: req.sessionID}).then(user => {
-        if( !user ) {
-            res.send(false);
+    userModel.findOne(req.body).then(user => {
+        if( user ) {
+            jwt.sign({username: req.body.username}, secret, (err, token) => {
+                if( !err ) {
+                    res.success(token);
+                } else {
+                    res.fail('token获取失败：', err);
+                }
+            });
         } else {
-            req.session.userId = user._id;
-            req.session.username = user.username;
-            res.send(true);
+            res.fail('用户名或密码错误');
         }
     });
 });
@@ -60,8 +72,7 @@ app.post('/login', (req, res) => {
 
 //  登出
 app.get('/logout', (req, res) => {
-    req.session.userId = null;
-    res.send(true);
+    res.success();
 });
 
 //  注册
@@ -70,39 +81,35 @@ app.post('/regist', (req, res) => {
         if( user.length < 1 ) {
             friendModel.create({username: req.body.username, list: []}, err => {});
             userModel.create(req.body, err => {
-                res.json({
-                    code: 200,
-                    msg: '注册成功！'
-                });
+                res.success();
             });
         } else {
-            res.json({
-                code: 201,
-                msg: '该用户名已存在！'
-            });
+            res.fail('该用户名已存在');
         }
     });
 });
 
 //  验证登录状态
 app.use((req, res, next) => {
-    //  连userid都没有，就是没登录
-    if( !req.session.userId ) {
-        res.json({
-            code: 401,
-            msg: '未登录！'
+    //  连token都没有，就是没登录
+    if( !req.headers.token || req.headers.token === 'null' || req.headers.token === 'undefined' ) {
+        res.loginInvalid()
+    } else {
+        jwt.verify(req.headers.token, secret, (err, decode) => {
+            if( !err ) {
+                userModel.findOne({username: decode.username}).then(user => {
+                    if( user ) {
+                        req.username = decode.username;
+                        next();
+                    } else {
+                        res.loginInvalid()
+                    }
+                });
+            } else {
+                res.loginInvalid();
+            }
         });
-        return;
     }
-    //  如果有userid，和数据库里的用户对比，当前用户的sessionid和请求的sessionid一样，表示正常登录。否则表示登录失效。
-    //  这么做可以防止用户重复登录。
-    userModel.findById(req.session.userId).then(user => {
-        if( user.sessionId !== req.sessionID ) {
-            res.json({code: 401, msg: '当前登录已失效！', data: {}});
-        } else {
-            next();
-        }
-    });
 });
 
 
