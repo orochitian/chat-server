@@ -56,11 +56,18 @@ app.get('/', (req, res) => {
 app.post('/login', (req, res) => {
     userModel.findOne(req.body).then(user => {
         if( user ) {
-            jwt.sign({username: req.body.username}, secret, (err, token) => {
+            //  登录成功随机生成token并更新用户表
+            jwt.sign({username: req.body.username}, new Date() + Math.random(), (err, token) => {
                 if( !err ) {
-                    res.success(token);
+                    userModel.findOneAndUpdate(req.body, {token}, err => {
+                        if( !err ) {
+                            res.success(token);
+                        } else {
+                            res.fail('token更新失败：', err);
+                        }
+                    });
                 } else {
-                    res.fail('token获取失败：', err);
+                    res.fail('token生成失败：', err);
                 }
             });
         } else {
@@ -95,18 +102,12 @@ app.use((req, res, next) => {
     if( !req.headers.token || req.headers.token === 'null' || req.headers.token === 'undefined' ) {
         res.loginInvalid()
     } else {
-        jwt.verify(req.headers.token, secret, (err, decode) => {
-            if( !err ) {
-                userModel.findOne({username: decode.username}).then(user => {
-                    if( user ) {
-                        req.username = decode.username;
-                        next();
-                    } else {
-                        res.loginInvalid()
-                    }
-                });
+        userModel.findOne({token: req.headers.token}).then(user => {
+            if( user ) {
+                req.username = user.username;
+                next();
             } else {
-                res.loginInvalid();
+                res.loginInvalid()
             }
         });
     }
