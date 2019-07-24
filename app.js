@@ -59,11 +59,12 @@ app.post('/login', (req, res) => {
             //  登录成功随机生成token并更新用户表
             jwt.sign({username: req.body.username}, new Date() + Math.random(), (err, token) => {
                 if( !err ) {
-                    userModel.findOneAndUpdate(req.body, {token}, err => {
-                        if( !err ) {
-                            res.success(token);
+                    userModel.findOneAndUpdate(req.body, {token}, {fields: '-password -__v -_id -updatedAt'}).then(user => {
+                        if( user ) {
+                            user.token = token;
+                            res.success(user);
                         } else {
-                            res.fail('token更新失败：', err);
+                            res.fail('用户名或密码错误');
                         }
                     });
                 } else {

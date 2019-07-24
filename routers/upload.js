@@ -3,10 +3,9 @@ var fileUploadModel = require('../model/fileUploadModel');
 var formidable = require('formidable');
 var fs = require('fs');
 var path = require('path');
-
 //  上传图片
 router.post('/', (req, res) => {
-    var userDir = "/fileupload/" + req.session.username;
+    var userDir = "/fileupload/" + req.username;
     var uploadDir = userDir + '/photo';
     var form = new formidable.IncomingForm();
     form.uploadDir = uploadDir;
@@ -18,18 +17,18 @@ router.post('/', (req, res) => {
     form.multiples = true;
 
     function uploadCallback(err, fields, files) {
-        var file = files.upload;
+        var file = files.file;
         //  给已上传文件的MD5值做持久化保存
         //  每次上传可以查询当前用户下，是否有相同文件。如果有把本次上传文件删除，返回数据库中文件地址。
-        fileUploadModel.findOne({hash: file.hash, user: req.session.username}).then(fileUpload => {
+        fileUploadModel.findOne({hash: file.hash, user: req.username}).then(fileUpload => {
             if( fileUpload ) {
                 // console.log('发现相同文件！');
                 fs.unlink(file.path, () => {
                     file.path = fileUpload.path;
-                    res.send({
+                    res.success({
                         isRepeat: true,
                         file
-                    })
+                    });
                 });
             } else {
                 // console.log('添加文件');
@@ -37,9 +36,9 @@ router.post('/', (req, res) => {
                     path: file.path,
                     hash: file.hash,
                     name: file.name,
-                    user: req.session.username
+                    user: req.username
                 }, err => {
-                    res.send({
+                    res.success({
                         isRepeat: false,
                         file
                     });

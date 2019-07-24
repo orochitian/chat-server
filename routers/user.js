@@ -61,9 +61,33 @@ router.get('/getMessageHistory', async (req, res) => {
     });
 });
 
-//  聊天
-router.post('/sendMessage', async (req, res) => {
+//  获取用户详情
+router.get('/getUser', (req, res) => {
+    //  如果传username就按username查，如果没有，就查当前用户
+    let condition;
+    if( req.query.username ) {
+        condition = { username: req.query.username };
+    } else {
+        condition = { token: req.headers.token }
+    }
+    userModel.findOne(condition).then(user => {
+        if( user ) {
+            res.success(user);
+        } else {
+            res.fail('无法找到该用户');
+        }
+    })
+});
 
+//  编辑资料
+router.post('/update', (req, res) => {
+    userModel.findOneAndUpdate({token: req.headers.token}, req.body).then(user => {
+        if( user ) {
+            res.success();
+        } else {
+            res.fail('用户更新失败，请重试');
+        }
+    })
 });
 
 module.exports = router;
