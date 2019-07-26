@@ -2,17 +2,20 @@ var router = require('express').Router();
 var userModel = require('../model/userModel');
 var friendModel = require('../model/friendModel');
 var messageModel = require('../model/messageModel');
+var friendRequestModel = require('../model/friendRequestModel');
 
 //  添加好友
 router.post('/addFriend', async (req, res) => {
     //  不需要查询全部字段，所以可以指定要查询的字段
     let filters = 'username';
+
     let user = await userModel.findOne({username: req.body.username}, filters);
-    if( !user ) {
+    if( !user ) {   //  查询目标用户是否存在
         res.fail('没有这个用户，再好好想想');
-    } else if( user.username === req.username ) {
+    } else if( user.username === req.username ) {   //  判断目标用户是否是自己
         res.fail('无法添加自己为好友');
     } else {
+        //  查询目标用户是否已经是好友
         let friend = await friendModel.findOne({username: req.username});
         for( let i=0; i<friend.list.length; i++ ) {
             if( friend.list[i].username === req.body.username ) {
@@ -20,17 +23,55 @@ router.post('/addFriend', async (req, res) => {
                 return;
             }
         }
-        //  如果添加成功，同时给双方添加对方为好友
-        friendModel.findOneAndUpdate({username: req.body.username}, {$push: {list: {username: req.username}}}, err => {});
-        friendModel.findOneAndUpdate({username: req.username}, {$push: {list: {username: user.username}}}, err => {});
-        res.success(user);
+        //  查询是否已申请过目标用户的好友请求
+        let friendRequest = await friendRequestModel.findOne({from: req.username, to: req.body.username});
+        if( friendRequest ) {
+            res.fail('已申请过了，请等待好友通过');
+            return;
+        }
+        let me = await userModel.findOne({username: req.username}, 'icon');
+        friendRequestModel.create({
+            from: req.username,
+            to: req.body.username,
+            mark: req.body.mark,
+            icon: me.icon
+        }).then(() => {
+            res.success();
+        });
     }
+});
+
+//  获取好友申请列表
+router.get('/friendRequestList', (req, res) => {
+    friendRequestModel.find({to: req.username}, '-_id -__v -updatedAt').then(list => {
+        res.success(list);
+    });
+});
+
+//  通过处理好友申请
+router.post('/friendRequestHandle', (req, res) => {
+    //  删除这条请求
+    friendRequestModel.findOneAndDelete({to: req.body.to, from: req.body.from}).then(() => {
+        //  如果同意，同时给双方添加对方为好友
+        if( req.body.accept ) {
+            friendModel.findOneAndUpdate({username: req.body.to}, {$push: {list: req.body.from}}, err => {});
+            friendModel.findOneAndUpdate({username: req.body.from}, {$push: {list: req.body.to}}, err => {});
+        }
+        res.success();
+    });
+
+
 });
 
 //  获取好友列表
 router.get('/getFriendList', async (req, res) => {
     let friend = await friendModel.findOne({username: req.username});
-    res.success(friend);
+    let friends = await userModel.find({
+        username: {
+            $in: friend.list
+        }
+    }, 'username nickname icon mood');
+    res.success(friends);
 });
 
 //  获取聊天记录
@@ -55,7 +96,6 @@ router.get('/getMessageHistory', async (req, res) => {
         result.reverse();
     }
     res.success({
-        user: req.username,
         messages: result,
         lastCount
     });
