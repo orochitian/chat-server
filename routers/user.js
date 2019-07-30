@@ -4,6 +4,15 @@ var friendModel = require('../model/friendModel');
 var messageModel = require('../model/messageModel');
 var friendRequestModel = require('../model/friendRequestModel');
 
+//  方便删除好友关系   可随时删除
+router.get('/deleteFriends', (req, res) => {
+    friendModel.updateMany({}, {list: []}, err => {
+        if( !err ) {
+            res.success();
+        }
+    })
+})
+
 //  添加好友
 router.post('/addFriend', async (req, res) => {
     //  不需要查询全部字段，所以可以指定要查询的字段
@@ -18,24 +27,27 @@ router.post('/addFriend', async (req, res) => {
         //  查询目标用户是否已经是好友
         let friend = await friendModel.findOne({username: req.username});
         for( let i=0; i<friend.list.length; i++ ) {
-            if( friend.list[i].username === req.body.username ) {
+            if( friend.list[i] === req.body.username ) {
                 res.fail('你们已经是好友了');
                 return;
             }
         }
         //  查询是否已申请过目标用户的好友请求
-        let friendRequest = await friendRequestModel.findOne({from: req.username, to: req.body.username});
+        let friendRequest = await friendRequestModel.findOne({$or: [{from: req.body.username, to: req.username}, {from: req.username, to: req.body.username}]});
         if( friendRequest ) {
             res.fail('已申请过了，请等待好友通过');
             return;
         }
         let me = await userModel.findOne({username: req.username}, 'icon');
-        friendRequestModel.create({
+        let resParams = {
             from: req.username,
             to: req.body.username,
             mark: req.body.mark,
             icon: me.icon
-        }).then(() => {
+        }
+        //  派发好友申请事件
+        req.sockets[req.body.username].emit('friend request', resParams);
+        friendRequestModel.create(resParams).then(() => {
             res.success();
         });
     }
@@ -56,11 +68,13 @@ router.post('/friendRequestHandle', (req, res) => {
         if( req.body.accept ) {
             friendModel.findOneAndUpdate({username: req.body.to}, {$push: {list: req.body.from}}, err => {});
             friendModel.findOneAndUpdate({username: req.body.from}, {$push: {list: req.body.to}}, err => {});
+            req.sockets[req.body.from].emit('friend request result', true);
+            req.sockets[req.body.to].emit('friend request result', true);
+        } else {
+            req.sockets[req.body.from].emit('friend request result', false);
         }
         res.success();
     });
-
-
 });
 
 //  获取好友列表
