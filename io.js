@@ -5,10 +5,11 @@ let sockets = {}
 
 module.exports = io => {
     io.on('connection', socket => {
-        //  如果有用户点了聊天，就在sockets里存储当前socket，由于用户名唯一，就用用户名做为key值
-        socket.on('single chat', username => {
+        socket.on('join', username => {
+            socket.user = username;
             sockets[username] = socket;
         });
+
         //  接收聊天信息
         socket.on('sendMessage', (req) => {
             //  在消息表中存储该消息，包含：发送人、接收人、消息体
@@ -25,7 +26,13 @@ module.exports = io => {
                 }
             });
         });
+
+        //  有用户离开，从sockets集合中释放
+        socket.on('disconnect', (ev) => {
+            delete sockets[socket.user];
+        });
     });
+    return sockets;
 };
 
 
