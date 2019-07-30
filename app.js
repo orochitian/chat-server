@@ -7,9 +7,7 @@ var friendModel = require('./model/friendModel');
 var history = require('connect-history-api-fallback');
 let jwt = require('jsonwebtoken');
 let http = require('http').createServer(app);
-require('./io')(require('socket.io')(http));
-
-const secret = 'ryanlee';
+let sockets = require('./io')(require('socket.io')(http));
 
 app.use('*', (req, res, next) => {
     res.header("Access-Control-Allow-Origin", req.headers.origin);
@@ -33,7 +31,7 @@ app.use('*', (req, res, next) => {
 
 app.use(history({index: '/'}));
 
-app.use( '/fileupload', express.static('/fileupload') );
+app.use( '/uploadImages', express.static('/uploadImages') );
 app.use( '/static', express.static('./dist/static') );
 
 app.use( bodyParser.urlencoded({extended : true}) );
@@ -106,6 +104,7 @@ app.use((req, res, next) => {
         userModel.findOne({token: req.headers.token}).then(user => {
             if( user ) {
                 req.username = user.username;
+                req.sockets = sockets;
                 next();
             } else {
                 res.loginInvalid()
