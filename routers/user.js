@@ -46,7 +46,9 @@ router.post('/addFriend', async (req, res) => {
             icon: me.icon
         }
         //  派发好友申请事件
-        req.sockets[req.body.username].emit('friend request', resParams);
+        if( req.body.username in req.sockets ) {
+            req.sockets[req.body.username].emit('friend request', resParams);
+        }
         friendRequestModel.create(resParams).then(() => {
             res.success();
         });
@@ -69,8 +71,8 @@ router.post('/friendRequestHandle', (req, res) => {
             friendModel.findOneAndUpdate({username: req.body.to}, {$push: {list: req.body.from}}, err => {});
             friendModel.findOneAndUpdate({username: req.body.from}, {$push: {list: req.body.to}}, err => {});
             req.sockets[req.body.from].emit('friend request result', true);
-            req.sockets[req.body.to].emit('friend request result', true);
-        } else {
+        }
+        if( req.body.from in req.sockets ) {
             req.sockets[req.body.from].emit('friend request result', false);
         }
         res.success();
